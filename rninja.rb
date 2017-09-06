@@ -257,7 +257,7 @@ module RNinja
 
         @@d.info("Ninja exited with code #{status.exitstatus}")
 
-        exit(status) if status != 0
+        exit(status.existatus) if status != 0
       end
     end
   end
