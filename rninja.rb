@@ -7,7 +7,7 @@ require "set"
 
 module RNinja
   class FullBuilder
-    attr_accessor :defs
+    attr_accessor :defs, :defaults
 
     def initialize(d, rn_dir)
       @d = d.fork
@@ -15,6 +15,7 @@ module RNinja
       @infos = {}
       @defs = []
       @vars = {}
+      @defaults = []
 
       set builddir: rn_dir
     end
@@ -93,7 +94,7 @@ module RNinja
       @defs << [:rule, name, massage_kv(opts)]
     end
 
-    def build(name, also: [], from: [], with: nil, imply: [], after: [], **opts)
+    def build(name, also: [], from: [], with: nil, imply: [], after: [], default: false, **opts)
       (name, also, from, imply, after) = [name, also, from, imply, after].map!{|v| [*massage(v)] }
 
       unless with
@@ -110,9 +111,11 @@ module RNinja
         })
       end
 
+
       [name, also, from, imply, after].each{|v| v.map!{|i| sanitize(i, colon: true, space: true) } }
 
       @defs << [:build, name, also, with, from, imply, after, massage_kv(opts)]
+      @defaults << name if default
     end
 
     def phony(name, is:, **opts) build name, from: is, with: "phony", **opts end
@@ -220,7 +223,7 @@ module RNinja
                   parts = ["build", *name]
                   parts << "|" unless also.empty?
                   parts.concat(also)
-                  parts[-1] << ":"
+                  parts[-1] = "#{parts[-1]}:"
                   parts << with
                   parts.concat(from)
                   parts << "|" unless imply.empty?
@@ -243,6 +246,13 @@ module RNinja
               end
 
               was_var = is_var
+            end
+
+            l.sep
+
+            b.defaults.each do |default|
+              l << "default"
+              emit_wrap.(default)
             end
 
             l.trim
