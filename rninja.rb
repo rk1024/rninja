@@ -4,6 +4,7 @@ require_relative "linewriter"
 
 require "fileutils"
 require "set"
+require "subprocess"
 
 module RNinja
   class FullBuilder
