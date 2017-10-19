@@ -142,7 +142,7 @@ module RNinja
         emit_set(:rn_mkdir, "mkdir")
         @l.sep
 
-        emit_rule(:rn_mkdir, {"command" => "$rn_mkdir $out"})
+        emit_rule(:rn_mkdir, {"command" => "-$rn_mkdir $out"})
       end
 
       @dirs.each do |itm|
