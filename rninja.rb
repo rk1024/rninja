@@ -15,6 +15,7 @@ module RNinja
       @rn_dir = rn_dir
     end
 
+    def name; "Ninja" end
     def file; "build.ninja" end
 
     def sanitize_path(val) val.gsub(/(?<!\$)([:\s])/, "$\\1") end
@@ -109,6 +110,7 @@ module RNinja
       @dirs = Set[]
     end
 
+    def name; "Make" end
     def file; "Makefile" end
 
     def sanitize_path(val) val.gsub(/(?<!\\)([#])/, "\\\\1") end
@@ -508,7 +510,7 @@ module RNinja
 
         status = Subprocess.call(["/usr/bin/env", *build_cmd])
 
-        @@d.info("Ninja exited with code #{status.exitstatus}")
+        @@d.info("#{gen.name} exited with code #{status.exitstatus}")
 
         exit(status.exitstatus) if status.exitstatus != 0
       end
