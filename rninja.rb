@@ -308,7 +308,7 @@ module RNinja
       @vars = {}
       @defaults = []
 
-      set rn_d: @generator.rn_dir
+      set builddir: @generator.rn_dir # Special variable for Ninja
     end
 
     def sanitize_path(val)
