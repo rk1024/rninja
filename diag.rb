@@ -1,6 +1,6 @@
-require_relative 'linewriter'
+require_relative "linewriter"
 
-require 'set'
+require "set"
 
 class Diagnostics
   class DiagnosticError < RuntimeError; end
@@ -183,6 +183,12 @@ class Diagnostics
         else
           "\e[38;5;9m#\e[0m<#{hl_qname(obj.class.name)}\e[0m: #{s}>"
         end
+      when Process::Status
+        [
+          *("exited with code \e[38;5;#{obj.success? ? 2 : 1}m#{obj.exitstatus}" if obj.exited?),
+          *("\e[38;5;3mkilled by signal \e[35;5;5m#{Signal.signame(obj.termsig)}" if obj.signaled?),
+          *("\e[38;5;4mstopped by signal \e[38;5;5m#{Signal.signame(obj.stopsig)}" if obj.stopped?),
+        ].tap{|a| a << "\e[38;5;13mrunning..." if a.empty? }.map{|p| "#{p}\e[0m" }.join(" | ")
       else
         has_no_inspect = obj.class.method_defined?(:diag_no_inspect)
         if obj.method(:inspect).owner == Kernel || has_no_inspect

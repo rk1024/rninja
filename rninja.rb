@@ -1,10 +1,10 @@
-require_relative "diag"
+require_relative "core"
+require_relative "command"
 require_relative "file"
 require_relative "linewriter"
 
 require "fileutils"
 require "set"
-require "subprocess"
 
 module RNinja
   class NinjaGenerator
@@ -336,10 +336,16 @@ module RNinja
 
         raise @d.error_r("Can't resolve recursive variable reference!") if skip.include?(var)
 
-        catch(:found) do
+        val = catch(:found) do
           throw(:found, extra[var]) if extra && extra.include?(var)
 
           get(var, skip: skip | [var])
+        end
+
+        case val
+          when String; val
+          when Enumerable; val.join(" ")
+          else val.to_s
         end
       end
 
@@ -412,44 +418,13 @@ module RNinja
     def phony(name, is:, **opts) build name, from: is, with: "phony", **opts end
   end
 
-  @@errrored = false
-  @@quiet = false
-  @@verbose = false
-
-  def self.error!; @@errored = true end
-  def self.error?; @@errored end
-  def self.quiet?; @@quiet end
-  def self.quiet=(value) @@quiet = value end
-  def self.verbose?; @@verbose end
-  def self.verbose=(value) @@verbose = value end
-
-  def self.diag
-    Diagnostics.new(
-      on_error: lambda{ self.error! },
-      quiet: lambda{ self.quiet? },
-      verbose: lambda{ self.verbose? },
-    )
-  end
-
-  @@d = diag
-
-  private_class_method def self.run_diag
-    begin
-      [true, yield]
-    rescue Diagnostics::DiagnosticError
-      [false, nil]
-    rescue => e
-      $stderr << e.backtrace[0] << ":#{e.to_s} (#{e.class})\n" <<
-        e.backtrace[1..-1].map{|e2| " " * 8 + "from " << e2.to_s << "\n"}.join
-      error!
-    end
-  end
+  @@d = Core.diag
 
   def self.run(rn_dir:, gen: :ninja, &block)
     @@d.pos("RNinja.run") do
       b = nil
 
-      run_diag do
+      Core.run_diag do
         FileUtils.mkdir_p(rn_dir)
 
         gen = case gen
@@ -508,9 +483,9 @@ module RNinja
 
         @@d.info(build_cmd.map{|a| a =~ /\s/ ? "\"#{a}\"" : a }.join(" "))
 
-        status = Subprocess.call(["/usr/bin/env", *build_cmd])
+        status = Command.run(build_cmd)
 
-        @@d.info("#{gen.name} exited with code #{status.exitstatus}")
+        @@d.info("#{gen.name} #{@@d.hl(status)}")
 
         exit(status.exitstatus) if status.exitstatus != 0
       end
