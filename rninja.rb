@@ -4,7 +4,9 @@ require_relative "file"
 require_relative "linewriter"
 
 require "fileutils"
+require "psych"
 require "set"
+require "yaml"
 
 module RNinja
   class NinjaGenerator
@@ -23,6 +25,8 @@ module RNinja
     def begin(l, defaults)
       @l = l
       @defaults = defaults
+
+      emit_set(:builddir, rn_dir) # Special Ninja variable for file output
     end
 
     def pream_end; end
@@ -299,7 +303,7 @@ module RNinja
   class FullBuilder
     attr_accessor :defs, :defaults
 
-    def initialize(d, generator)
+    def initialize(d, config, generator)
       @d = d.fork
       @generator = generator
       @rules = {}
@@ -307,8 +311,7 @@ module RNinja
       @defs = []
       @vars = {}
       @defaults = []
-
-      set builddir: @generator.rn_dir # Special variable for Ninja
+      @config = config
     end
 
     def sanitize_path(val)
@@ -359,7 +362,7 @@ module RNinja
     end
 
     def set(**vars)
-      vars.map{|k, v| [k, v] }.each do |key, val|
+      vars.each do |key, val|
         @vars[key] = val
         @defs << [:set, key.to_s, massage(val)]
       end
@@ -372,6 +375,8 @@ module RNinja
     def var_rel_paths(var, *paths) paths.map{|p| var_rel_path(var, p) } end
 
     def var_glob(var, pat) Dir[File.join(get(var), expand(pat))].map{|f| var_rel_path(var, f) } end
+
+    def config(key) @config[key] end
 
     def rule(name, build: nil, from: nil, info: "#{name} $in", **opts)
       (build, from) = [build, from].map!{|v| massage(v) }
@@ -418,9 +423,123 @@ module RNinja
     def phony(name, is:, **opts) build name, from: is, with: "phony", **opts end
   end
 
-  @@d = Core.diag
+  class ConfigBuilder
+    def initialize(d, path)
+      @d = d.fork
+      @file = path
 
-  def self.run(rn_dir:, gen: :ninja, &block)
+      raise @d.fatal_r("bad config filepath #{@d.hl(@file)}") if !@file || File.exist?(@file) && !File.file?(@file)
+
+      @config = File.file?(@file.to_s) ? File.open(@file, "r") {|f| massage_config(YAML.load(f)) } : {}
+      @keys = Set[:profiles]
+      @defaults = {}
+      @profiles = {}
+    end
+
+    def emit
+      @d.pos("emit") do
+        file2 = @file.clone << "~"
+
+        file2 << "~" while File.exist?(file2)
+
+        config_nodefs = @config.reject{|_, v| v == :default }
+
+        begin
+          File.open(file2, "w") do |f|
+            f << YAML.dump(massage_config(@keys.map{|k| [k, :default] }
+              .to_h.merge(config_nodefs), :write))
+          end
+
+          FileUtils.mv(file2, @file)
+        rescue Exception => e
+          File.delete(file2)
+
+          raise e
+        end
+
+        defs = {}
+        
+        defs.merge!(@defaults)
+        config_nodefs.fetch(:profiles, []).reverse.each{|p| defs.merge!(@profiles[p]) }
+
+        @config = defs.merge(config_nodefs)
+        @config = @config.map{|k, v| [k.clone.freeze, v.clone.freeze] }.to_h.freeze
+
+        @d.p(@config)
+      end
+    end
+
+    def massage_config_val(val, mode = :read)
+      case val
+        when Hash; massage_config(val, mode)
+        when Enumerable; val.map{|i| massage_config_val(i, mode) }.to_a
+        else val
+      end
+    end
+
+    def massage_config(conf, mode = :read)
+      conf.map do |key, val|
+        [
+          case mode
+            when :read; key.to_s.to_sym
+            when :write; key.to_s
+            else raise "invalid massage_config mode #{mode.inspect}"
+          end,
+          massage_config_val(val, mode)
+        ]
+      end.to_h
+    end
+
+    def [](key)
+      @d.pos("self[#{key.inspect}]") do
+        @config.fetch(key) { raise @d.fatal_r("key #{@d.hl(key)} doesn't exist") }
+      end
+    end
+
+    def init(*keys)
+      @d.pos("init") do
+        @keys.merge(keys)
+      end
+    end
+
+    def defaults(**opts)
+      @d.pos("defaults") do
+        opts.rehash
+        opts = massage_config(opts)
+        @keys.merge(opts.each_key)
+        @defaults.merge!(opts)
+      end
+    end
+
+    def profile(name, config)
+      @d.pos("profile #{name.inspect}") do
+        config.each_key{|k| raise @d.fatal_r("key #{@d.hl(k)} not defined") unless @keys.include?(k) }
+
+        @profiles[name] = config.clone
+      end
+    end
+
+    def rule(key)
+      @d.pos("rule") do
+        raise @d.fatal_r("config key #{key} doesn't exist") unless @config.include?(key)
+      end
+    end
+  end
+
+  @@d = Core.diag
+  @@config = nil
+
+  def self.config(file:, &block)
+    @@d.pos("RNinja.config") do
+      Core.run_diag do
+        @@config = ConfigBuilder.new(@@d, file)
+        @@config.instance_eval(&block)
+        @@config.emit
+      end
+    end
+  end
+
+  def self.run(rn_dir:, conf: nil, gen: :ninja, &block)
     @@d.pos("RNinja.run") do
       b = nil
 
@@ -433,7 +552,7 @@ module RNinja
           else nil
         end.new(@@d, rn_dir)
 
-        b = FullBuilder.new(@@d, gen)
+        b = FullBuilder.new(@@d, @@config, gen)
         b.instance_eval(&block)
 
         build_script = File.join(rn_dir, gen.file)
