@@ -460,7 +460,7 @@ module RNinja
         defs = {}
         
         defs.merge!(@defaults)
-        config_nodefs.fetch(:profiles, []).reverse.each{|p| defs.merge!(@profiles[p]) }
+        [*config_nodefs[:profiles]].reverse.each{|p| defs.merge!(@profiles[p]) }
 
         @config = defs.merge(config_nodefs)
         @config = @config.map{|k, v| [k.clone.freeze, v.clone.freeze] }.to_h.freeze
