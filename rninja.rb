@@ -529,7 +529,9 @@ module RNinja
   @@d = Core.diag
   @@config = nil
 
-  def self.config(file:, &block)
+  def self.[](key) @@config[key] end
+
+  def self.config(file: nil, &block)
     @@d.pos("RNinja.config") do
       Core.run_diag do
         @@config = ConfigBuilder.new(@@d, file)
