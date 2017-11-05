@@ -147,9 +147,10 @@ module RNinja
       unless @has_mkdir
         @l.sep
         emit_set(:rn_mkdir, "mkdir")
+        emit_set(:rn_touch, "touch")
         @l.sep
 
-        emit_rule(:rn_mkdir, {"command" => "-$rn_mkdir $out"})
+        emit_rule(:rn_mkdir, {"command" => "-$rn_mkdir $out || $rn_touch $out"})
       end
 
       @dirs.each do |itm|
