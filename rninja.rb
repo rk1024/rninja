@@ -111,6 +111,7 @@ module RNinja
       @has_mkdir = false
       @rn_dir = rn_dir
       @rules = {}
+      @outs = Set[]
       @dirs = Set[]
     end
 
@@ -141,7 +142,7 @@ module RNinja
         q << dir if @dirs.add?(dir)
       end
 
-      @dirs.reject!{|d| File.dirname(d) == d }
+      @dirs.reject!{|d| File.dirname(d) == d || @outs.include?(d) }
 
       unless @has_mkdir
         @l.sep
@@ -243,6 +244,8 @@ module RNinja
       vars = opts.map{|k, v| [k.to_sym, v.to_s] }.to_h
 
       parts = [*name, *also]
+
+      @outs.merge(parts)
 
       unless is_mkdir || is_phony
         parts.map{|p| File.dirname(p) }.select{|d| File.dirname(d) != d }.each do |dir|
@@ -436,6 +439,12 @@ module RNinja
       @profiles = {}
     end
 
+    private def try_clone(x)
+      x.clone
+    rescue TypeError
+      x
+    end
+
     def emit
       @d.pos("emit") do
         file2 = @file.clone << "~"
@@ -463,7 +472,7 @@ module RNinja
         [*config_nodefs[:profiles]].reverse.each{|p| defs.merge!(@profiles[p]) }
 
         @config = defs.merge(config_nodefs)
-        @config = @config.map{|k, v| [k.clone.freeze, v.clone.freeze] }.to_h.freeze
+        @config = @config.map{|k, v| [try_clone(k).freeze, try_clone(v).freeze] }.to_h.freeze
 
         @d.p(@config)
       end
