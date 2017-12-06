@@ -244,12 +244,14 @@ module RNinja
 
       vars = opts.map{|k, v| [k.to_sym, v.to_s] }.to_h
 
-      parts = [*name, *also]
+      targets = [*name, *also]
+      target = targets[0]
+      dependents = targets[1..-1]
 
-      @outs.merge(parts)
+      @outs.merge(targets)
 
       unless is_mkdir || is_phony
-        parts.map{|p| File.dirname(p) }.select{|d| File.dirname(d) != d }.each do |dir|
+        Set.new(targets.map{|p| File.dirname(p) }.select{|d| File.dirname(d) != d }).each do |dir|
           @dirs << dir
           imply << dir
         end
@@ -257,10 +259,10 @@ module RNinja
 
       if is_phony
         @l << ".PHONY:"
-        emit_wrap(parts, recipe: false)
+        emit_wrap(targets, recipe: false)
       end
 
-      parts[-1] = "#{parts[-1]}:"
+      parts = ["#{target}:"]
 
       parts.concat(from)
       parts.concat(imply)
@@ -296,6 +298,17 @@ module RNinja
         emit_wrap(parts, recipe: true)
 
         catch(:stop) { @l << "\t@echo \e[1m[RNinja]\e[0m #{fix_vars(vars.fetch(:description) { throw(:stop) })}" }
+
+        @l.sep unless parts.empty?
+      end
+
+      unless dependents.empty?
+        parts = [*dependents[1..-2], "#{dependents[-1]}:", target]
+
+        parts = resplit(fix_vars(expand(parts.map!{|p| p.to_s }, vars)))
+
+        @l << ""
+        emit_wrap(parts, recipe: false)
 
         @l.sep unless parts.empty?
       end
@@ -468,7 +481,7 @@ module RNinja
         end
 
         defs = {}
-        
+
         defs.merge!(@defaults)
         [*config_nodefs[:profiles]].reverse.each{|p| defs.merge!(@profiles[p]) }
 
