@@ -185,15 +185,19 @@ module Command
             out << curr unless curr.empty?
             curr = ""
           elsif s.scan(/\\/) then curr << s.scan(/./)
-          elsif s.scan(/'/) then
+          elsif s.scan(/'/)
             out << curr unless curr.empty?
             curr = ""
             state = :sq
+          elsif s.scan(/"/)
+            out << curr unless curr.empty?
+            curr = ""
+            state = :dq
           else curr << s.scan(/./)
           end
         when :sq
           if s.scan(/\\/) then curr << s.scan(/./)
-          elsif s.scan(/'/) then
+          elsif s.scan(/'/)
             out << curr
             curr = ""
             state = :init
@@ -201,11 +205,16 @@ module Command
           end
         when :dq
           if s.scan(/\\/) then curr << s.scan(/./)
-          elsif s.scan(/"/) then state = :init
+          elsif s.scan(/"/)
+            out << curr
+            curr = ""
+            state = :init
           else curr << s.scan(/./)
           end
       end
     end
+
+    out << curr unless curr.empty?
 
     case state
       when :sq; raise @@d.fatal_r("unterminated single quote in #{@d.hl(cmd)}")
