@@ -146,7 +146,7 @@ module RNinja
 
       unless @has_mkdir
         @l.sep
-        emit_set(:rn_mkdir, "mkdir")
+        emit_set(:rn_mkdir, "mkdir -p --")
         emit_set(:rn_touch, "touch")
         @l.sep
 
