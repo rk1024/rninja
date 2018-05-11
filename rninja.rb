@@ -591,16 +591,14 @@ module RNinja
             b.defs.each do |type, *args|
               is_var = type == :set
 
-              if was_var
-                if is_var
-                  l.trim
-                else
-                  if is_pream
-                    is_pream = false
+              if was_var && is_var
+                l.trim
+              end
 
-                    gen.pream_end
-                  end
-                end
+              if is_pream && !is_var
+                is_pream = false
+
+                gen.pream_end
               end
 
               case type
