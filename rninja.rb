@@ -297,7 +297,7 @@ module RNinja
         @l << ""
         emit_wrap(parts, recipe: true)
 
-        catch(:stop) { @l << "\t@echo \e[1m[RNinja]\e[0m #{fix_vars(vars.fetch(:description) { throw(:stop) })}" }
+        catch(:stop) { @l << "\t@echo \e[1m[RNinja]\e[m #{fix_vars(vars.fetch(:description) { throw(:stop) })}" }
 
         @l.sep unless parts.empty?
       end
