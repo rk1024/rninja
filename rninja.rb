@@ -451,6 +451,7 @@ module RNinja
       @keys = Set[:profiles]
       @defaults = {}
       @profiles = {}
+      @default_profiles = []
     end
 
     private def try_clone(x)
@@ -469,7 +470,7 @@ module RNinja
 
         begin
           File.open(file2, "w") do |f|
-            f << YAML.dump(massage_config(@keys.map{|k| [k, :default] }
+            f << YAML.dump(massage_config(@keys.map{|k| [k, k == :profiles ? @default_profiles : :default] }
               .to_h.merge(config_nodefs), :write))
           end
 
@@ -480,10 +481,10 @@ module RNinja
           raise e
         end
 
-        defs = {}
+        defs = {profiles: @default_profiles}
 
         defs.merge!(@defaults)
-        [*config_nodefs[:profiles]].reverse.each{|p| defs.merge!(@profiles[p]) }
+        [*@default_profiles, *config_nodefs[:profiles]].reverse.each{|p| defs.merge!(@profiles[p]) }
 
         @config = defs.merge(config_nodefs)
         @config = @config.map{|k, v| [try_clone(k).freeze, try_clone(v).freeze] }.to_h.freeze
@@ -531,6 +532,12 @@ module RNinja
         opts = massage_config(opts)
         @keys.merge(opts.each_key)
         @defaults.merge!(opts)
+      end
+    end
+
+    def default_profiles(*profiles)
+      @d.pos("default_profiles #{@d.hl(profiles)}") do
+        @default_profiles = [*profiles]
       end
     end
 
