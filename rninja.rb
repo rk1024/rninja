@@ -26,7 +26,7 @@ module RNinja
       @l = l
       @defaults = defaults
 
-      emit_set(:builddir, rn_dir) # Special Ninja variable for file output
+      emit_set(:builddir, @rn_dir) # Special Ninja variable for file output
     end
 
     def pream_end; end
@@ -112,7 +112,6 @@ module RNinja
       @rn_dir = rn_dir
       @rules = {}
       @outs = Set[]
-      @dirs = Set[]
     end
 
     def name; "Make" end
@@ -123,42 +122,24 @@ module RNinja
     def begin(l, defaults)
       @l = l
       @defaults = defaults
+      emit_set(:builddir, @rn_dir)
     end
 
     def pream_end
       @l << ".SECONDARY:" << ".DELETE_ON_ERROR:"
       @l.sep
 
-      @l << ".PHONY: $(rn_d)/.defaults.rnj" << "$(rn_d)/.defaults.rnj: #{@defaults.join(" ")}"
+      @l << ".PHONY: $(builddir)/.defaults.rnj" << "$(builddir)/.defaults.rnj: #{@defaults.join(" ")}"
       @l.sep
     end
 
     def end
-      q = @dirs.to_a
-
-      until q.empty?
-        dir = File.dirname(q.shift)
-
-        q << dir if @dirs.add?(dir)
-      end
-
-      @dirs.reject!{|d| File.dirname(d) == d || @outs.include?(d) }
-
       unless @has_mkdir
         @l.sep
         emit_set(:rn_mkdir, "mkdir -p --")
-        emit_set(:rn_touch, "touch")
         @l.sep
 
         emit_rule(:rn_mkdir, {"command" => "-$rn_mkdir $out || $rn_touch $out"})
-      end
-
-      @dirs.each do |itm|
-        parent = File.dirname(itm)
-        parent = nil if File.dirname(parent) == parent
-        emit_build([itm], [], :rn_mkdir, [*parent], [], [], {
-          "description" => "mkdir #{itm}"
-        }, is_mkdir: true)
       end
     end
 
@@ -237,12 +218,14 @@ module RNinja
     def emit_rule(name, opts)
       @has_mkdir = true if name == "rn_mkdir"
       @rules[name] = opts
+      @d.warn("only GCC depfiles supported") if opts.include?("deps") && opts["deps"] != "gcc"
     end
 
-    def emit_build(name, also, with, from, imply, after, opts, is_mkdir: false)
-      is_phony = with == "phony"
+    def emit_build(name, also, with, from, imply, after, opts)
+      with = with.to_sym
+      is_phony = with == :phony
 
-      vars = opts.map{|k, v| [k.to_sym, v.to_s] }.to_h
+      vars = opts.map{|k, v| [k.to_sym, [*v].flat_map{|e| e.to_s}.join(" ")] }.to_h
 
       targets = [*name, *also]
       target = targets[0]
@@ -250,11 +233,10 @@ module RNinja
 
       @outs.merge(targets)
 
-      unless is_mkdir || is_phony
-        Set.new(targets.map{|p| File.dirname(p) }.select{|d| File.dirname(d) != d }).each do |dir|
-          @dirs << dir
-          imply << dir
-        end
+      dirs = []
+
+      unless is_phony
+        dirs = Set.new(targets.map{|p| File.dirname(p) }.select{|d| File.dirname(d) != d }).to_a
       end
 
       if is_phony
@@ -273,33 +255,58 @@ module RNinja
 
       parts.each{|n| raise @d.fatal_r("invalid rule part '#{n}'") if n =~ /\s/ }
 
-      @l << ""
-      emit_wrap(parts, recipe: false)
-
-      unless is_phony
+      if is_phony
+        @l << ""
+        emit_wrap(parts, recipe: false)
+      else
         rule = @rules[with]
 
         raise @d.fatal_r("no rule found for #{@d.hl(with)}") unless rule
+
+        if rule["deps"] == "gcc"
+          depfile = fix_vars(expand(rule["depfile"], vars, extra: {
+            in: resplit(fix_vars(expand(from, vars))).join(" "),
+            out: resplit(fix_vars(expand(name, vars))).join(" "),
+          }))
+
+          @l << "#{depfile}: #{fix_vars(expand(target, vars))}"
+
+          @l.sep
+        end
+
+        @l << ""
+        emit_wrap(parts, recipe: false)
 
         parts = [rule["command"]]
 
         raise @d.fatal_r("bad command for rule #{@d.hl(with)}") unless parts.any?
 
         parts = resplit(fix_vars(expand(parts.map!{|p| p.to_s }, vars, extra: {
-          in: imply.empty? ? "$^" : resplit(fix_vars(expand(from, vars))).join(" "),
-          out: also.empty? && name.length == 1 ? "$@" : resplit(fix_vars(expand(name, vars))).join(" "),
+          in: resplit(fix_vars(expand(from, vars))).join(" "),
+          out: resplit(fix_vars(expand(name, vars))).join(" "),
         })))
 
         parts[0] = "@#{parts[0]}" unless parts.empty?
 
         parts.each{|n| @d.warn("maybe invalid recipe part '#{n}'") if n =~ /\s/ }
 
+        dirs.each do |dir|
+          @l << ""
+          emit_wrap([*"@$(rn_mkdir)", *resplit(fix_vars(expand(dir, vars)))], recipe: true)
+        end
+
         @l << ""
         emit_wrap(parts, recipe: true)
 
         catch(:stop) { @l << "\t@echo \e[1m[RNinja]\e[m #{fix_vars(vars.fetch(:description) { throw(:stop) })}" }
 
-        @l.sep unless parts.empty?
+        @l.sep
+
+        if rule["deps"] == "gcc"
+          @l << "-include #{depfile}"
+
+          @l.sep
+        end
       end
 
       unless dependents.empty?
