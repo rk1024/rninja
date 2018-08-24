@@ -331,6 +331,7 @@ module RNinja
       @d = d.fork
       @generator = generator
       @rules = {}
+      @depends = {}
       @infos = {}
       @defs = []
       @vars = {}
@@ -420,8 +421,28 @@ module RNinja
       @defs << [:rule, name, massage_kv(opts)]
     end
 
+    def depend(pat, on:)
+      on = [*massage(on)]
+
+      pat = expand(pat)
+
+      @depends.fetch(pat) { @depends[pat] = [] }.append(*on)
+    end
+
     def build(name, also: [], from: [], with: nil, imply: [], after: [], default: false, **opts)
       (name, also, from, imply, after) = [name, also, from, imply, after].map!{|v| [*massage(v)] }
+
+      unless @depends.empty?
+        outs = [*name, *also].map!{|f| expand(f) }
+
+        auto_imply = Set.new
+
+        @depends.each do |pat, files|
+          auto_imply.merge(files) if outs.any?{|o| File.fnmatch?(pat, o) }
+        end
+
+        imply.append(*auto_imply)
+      end
 
       unless with
         with = @rules.fetch([name, from].map! do |set|
