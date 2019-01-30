@@ -469,6 +469,8 @@ module RNinja
   end
 
   class ConfigBuilder
+    attr_reader :exports
+
     def initialize(d, path)
       @d = d.fork
       @file = path
@@ -480,6 +482,7 @@ module RNinja
       @defaults = {}
       @profiles = {}
       @default_profiles = []
+      @exports = Set[]
     end
 
     private def try_clone(x)
@@ -582,6 +585,12 @@ module RNinja
         raise @d.fatal_r("config key #{key} doesn't exist") unless @config.include?(key)
       end
     end
+
+    def export(*keys)
+      @d.pos("export") do
+        @exports.merge(keys)
+      end
+    end
   end
 
   @@d = Core.diag
@@ -613,6 +622,9 @@ module RNinja
         end.new(@@d, rn_dir)
 
         b = FullBuilder.new(@@d, @@config, gen)
+
+        b.set(@@config.exports.map{|k| [k, @@config[k]] }.to_h)
+
         b.instance_eval(&block)
 
         build_script = File.join(rn_dir, gen.file)
