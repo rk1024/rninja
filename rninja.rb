@@ -331,6 +331,7 @@ module RNinja
       @d = d.fork
       @generator = generator
       @rules = {}
+      @rule_deps = {}
       @depends = {}
       @infos = {}
       @defs = []
@@ -403,7 +404,7 @@ module RNinja
 
     def config(key) @config[key] end
 
-    def rule(name, build: nil, from: nil, info: "#{name} $in", **opts)
+    def rule(name, build: nil, from: nil, info: "#{name} $in", needs: Set[], **opts)
       (build, from) = [build, from].map!{|v| massage(v) }
 
       if build || from
@@ -417,6 +418,10 @@ module RNinja
       end
 
       @infos[name] = info
+
+      needs = Set[*massage(needs)]
+
+      @rule_deps[name] = needs unless needs.empty?
 
       @defs << [:rule, name, massage_kv(opts)]
     end
@@ -432,16 +437,14 @@ module RNinja
     def build(name, also: [], from: [], with: nil, imply: [], after: [], default: false, **opts)
       (name, also, from, imply, after) = [name, also, from, imply, after].map!{|v| [*massage(v)] }
 
+      auto_imply = Set.new
+
       unless @depends.empty?
         outs = [*name, *also].map!{|f| expand(f) }
-
-        auto_imply = Set.new
 
         @depends.each do |pat, files|
           auto_imply.merge(files) if outs.any?{|o| File.fnmatch?(pat, o) }
         end
-
-        imply.append(*auto_imply)
       end
 
       unless with
@@ -450,6 +453,10 @@ module RNinja
           Set[*set.map{|n| File.extname(n) }]
         end) { raise @d.error_r("No implicit rule found to build #{name.join(" ")} from #{from.empty? ? "nothing" : from.join(" ")}.") }
       end
+
+      @rule_deps[with].tap{|d| auto_imply.merge(d) if d }
+
+      imply.append(*auto_imply) unless auto_imply.empty?
 
       if !opts.include?(:description) && @infos.include?(with)
         opts[:description] = expand(@infos[with], extra: {
