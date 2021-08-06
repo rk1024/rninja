@@ -9,6 +9,8 @@ require "set"
 require "yaml"
 
 module RNinja
+  WRAP_WIDTH = 100
+
   class NinjaGenerator
     attr_reader :rn_dir
 
@@ -41,7 +43,7 @@ module RNinja
     private def emit_wrap(parts)
       parts.each do |part|
         if @l.peek.length > 0
-          if (@l.peek.length + part.length + 1) > 78
+          if (@l.peek.length + part.length + 1) > WRAP_WIDTH - 2
             @l.peek << " $"
             @l << "  #{part}"
           else
@@ -188,7 +190,7 @@ module RNinja
     private def emit_wrap(parts, recipe:)
       parts.each do |part|
         if @l.peek.length > 0
-          if (@l.peek.length + part.length + 1) > (recipe ? 78 : 79)
+          if (@l.peek.length + part.length + 1) > WRAP_WIDTH - (recipe ? 2 : 1)
             @l.peek << (recipe ? " \\" : "\\")
             @l << " #{part}"
           else
@@ -459,10 +461,10 @@ module RNinja
       imply.append(*auto_imply) unless auto_imply.empty?
 
       if !opts.include?(:description) && @infos.include?(with)
-        opts[:description] = expand(@infos[with], extra: {
+        opts[:description] = expand(@infos[with], extra: opts.merge({
           in: from.map{|f| expand(f) }.join(" "),
           out: name.map{|f| expand(f) }.join(" "),
-        })
+        }))
       end
 
 
@@ -630,7 +632,7 @@ module RNinja
 
         b = FullBuilder.new(@@d, @@config, gen)
 
-        b.set(@@config.exports.map{|k| [k, @@config[k]] }.to_h)
+        b.set(**@@config.exports.map{|k| [k, @@config[k]] }.to_h)
 
         b.instance_eval(&block)
 
