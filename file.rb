@@ -4,7 +4,7 @@ class File
   def self.change_ext(path, ext)
     unless block_given?
       case ext
-      when /\A\.[^\.]*\z/, '', nil;
+      when /\A\..*\z/, '', nil;
       else raise 'Invalid extension format.'
       end
     end
